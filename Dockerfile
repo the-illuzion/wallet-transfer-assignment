@@ -22,6 +22,7 @@ WORKDIR /app
 
 COPY --from=builder /wallet-transfer .
 COPY --from=builder /app/migrations ./migrations
+COPY --from=builder /app/seeds ./seeds
 
 EXPOSE 8080
 

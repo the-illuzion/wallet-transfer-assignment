@@ -25,8 +25,10 @@ docker-down:
 	docker compose down -v
 
 test-docker:
-	docker compose -f docker-compose.test.yml up --build --abort-on-container-exit --exit-code-from test-runner
-	docker compose -f docker-compose.test.yml down -v
+	@exit_code=0; \
+	docker compose -f docker-compose.test.yml up --build --abort-on-container-exit --exit-code-from test-runner || exit_code=$$?; \
+	docker compose -f docker-compose.test.yml down -v; \
+	exit $$exit_code
 
 lint:
 	golangci-lint run ./...
