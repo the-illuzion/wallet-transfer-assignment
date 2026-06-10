@@ -57,7 +57,7 @@ CREATE INDEX IF NOT EXISTS idx_transfers_to_wallet   ON transfers(to_wallet_id);
 CREATE INDEX IF NOT EXISTS idx_transfers_status      ON transfers(status);
 
 -- ============================================================================
--- ledger_entries: double-entry bookkeeping (every transfer → 1 DEBIT + 1 CREDIT)
+-- ledger_entries: double-entry bookkeeping (every processed transfer → 1 DEBIT + 1 CREDIT)
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS ledger_entries (
     id           UUID         PRIMARY KEY DEFAULT gen_random_uuid(),

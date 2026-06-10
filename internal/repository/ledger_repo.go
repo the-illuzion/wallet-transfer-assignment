@@ -15,7 +15,7 @@ func NewLedgerRepository() *LedgerRepository {
 }
 
 // CreatePair atomically creates a DEBIT and CREDIT ledger entry pair for a transfer.
-// This enforces double-entry bookkeeping: every transfer generates exactly two entries
+// This enforces double-entry bookkeeping: every successful (PROCESSED) transfer generates exactly two entries
 // that balance each other (debit amount == credit amount).
 func (r *LedgerRepository) CreatePair(ctx context.Context, db DBTX, transferID, fromWalletID, toWalletID string, amount int64) error {
 	// DEBIT entry — source wallet

@@ -11,7 +11,7 @@ const (
 )
 
 // LedgerEntry represents one side of a double-entry ledger record.
-// Every transfer produces exactly two entries: one DEBIT and one CREDIT.
+// Every successful (PROCESSED) transfer produces exactly two entries: one DEBIT and one CREDIT. Failed transfers write no entries.
 type LedgerEntry struct {
 	ID         string    `json:"id"`
 	TransferID string    `json:"transferId"`
