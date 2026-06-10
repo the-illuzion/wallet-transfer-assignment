@@ -59,22 +59,34 @@ func (r *IdempotencyRepository) GetByKey(ctx context.Context, db DBTX, key strin
 
 // MarkCompleted updates an idempotency record to COMPLETED status with the transfer ID.
 func (r *IdempotencyRepository) MarkCompleted(ctx context.Context, db DBTX, key string, transferID string) error {
-	_, err := db.Exec(ctx,
+	result, err := db.Exec(ctx,
 		`UPDATE idempotency_records
 		 SET status = $1, transfer_id = $2::uuid, updated_at = NOW()
 		 WHERE idempotency_key = $3`,
 		domain.IdempotencyStatusCompleted, transferID, key,
 	)
-	return err
+	if err != nil {
+		return err
+	}
+	if result.RowsAffected() == 0 {
+		return domain.ErrIdempotencyKeyNotFound
+	}
+	return nil
 }
 
 // MarkFailed updates an idempotency record to FAILED status with an optional transfer ID.
 func (r *IdempotencyRepository) MarkFailed(ctx context.Context, db DBTX, key string, transferID *string) error {
-	_, err := db.Exec(ctx,
+	result, err := db.Exec(ctx,
 		`UPDATE idempotency_records
 		 SET status = $1, transfer_id = $2::uuid, updated_at = NOW()
 		 WHERE idempotency_key = $3`,
 		domain.IdempotencyStatusFailed, transferID, key,
 	)
-	return err
+	if err != nil {
+		return err
+	}
+	if result.RowsAffected() == 0 {
+		return domain.ErrIdempotencyKeyNotFound
+	}
+	return nil
 }

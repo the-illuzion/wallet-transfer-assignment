@@ -23,5 +23,6 @@ var (
 	ErrTransferNotFound         = &DomainError{Code: "TRANSFER_NOT_FOUND", Message: "transfer not found"}
 	ErrIdempotencyKeyMismatch   = &DomainError{Code: "IDEMPOTENCY_KEY_MISMATCH", Message: "idempotency key was already used with different request parameters"}
 	ErrIdempotencyKeyInProgress = &DomainError{Code: "IDEMPOTENCY_KEY_IN_PROGRESS", Message: "a request with this idempotency key is already being processed"}
+	ErrIdempotencyKeyNotFound   = &DomainError{Code: "IDEMPOTENCY_KEY_NOT_FOUND", Message: "idempotency key not found"}
 	ErrInvalidStateTransition   = &DomainError{Code: "INVALID_STATE_TRANSITION", Message: "invalid state transition"}
 )

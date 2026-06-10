@@ -10,6 +10,9 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/prateekgautam/wallet-transfer-assignment/internal/domain"
+	"github.com/prateekgautam/wallet-transfer-assignment/internal/repository"
 )
 
 // ── Response types for JSON unmarshalling ─────────────────────────────────────
@@ -343,6 +346,30 @@ func TestGetTransfer_UppercaseUUID(t *testing.T) {
 	json.Unmarshal(result.Data, &retrieved)
 
 	assertEqual(t, created.ID, strings.ToLower(retrieved.ID), "transfer ID")
+}
+
+func TestIdempotencyRepo_MarkCompleted_KeyNotFound(t *testing.T) {
+	cleanupDB(t)
+	repo := repository.NewIdempotencyRepository()
+	ctx := context.Background()
+
+	err := repo.MarkCompleted(ctx, testDB.Pool, "non-existent-key", "00000000-0000-0000-0000-000000000001")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	assertEqual(t, domain.ErrIdempotencyKeyNotFound.Error(), err.Error(), "error message")
+}
+
+func TestIdempotencyRepo_MarkFailed_KeyNotFound(t *testing.T) {
+	cleanupDB(t)
+	repo := repository.NewIdempotencyRepository()
+	ctx := context.Background()
+
+	err := repo.MarkFailed(ctx, testDB.Pool, "non-existent-key", nil)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	assertEqual(t, domain.ErrIdempotencyKeyNotFound.Error(), err.Error(), "error message")
 }
 
 // ── Wallet Tests ──────────────────────────────────────────────────────────────
