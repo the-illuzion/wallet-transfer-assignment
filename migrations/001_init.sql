@@ -3,6 +3,9 @@
 
 BEGIN;
 
+-- Enable pgcrypto extension for gen_random_uuid() on older PostgreSQL versions
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+
 -- ============================================================================
 -- wallets: stores wallet balances with currency denomination
 -- ============================================================================
