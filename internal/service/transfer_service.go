@@ -102,9 +102,9 @@ func (s *TransferService) CreateTransfer(ctx context.Context, req domain.CreateT
 
 	// 4. Claim the idempotency key (INSERT ... ON CONFLICT DO NOTHING)
 	//
-	// If another transaction holds this key (uncommitted INSERT), this will block
-	// until that transaction commits or rolls back — PostgreSQL serializes concurrent
-	// INSERTs on the same UNIQUE key within transactions.
+	// Because of the preceding advisory lock guard, concurrent requests with the same
+	// key are rejected early with 409 Conflict. This INSERT is reached only when the lock
+	// is successfully acquired, meaning concurrent INSERTs will not block on this unique index.
 	created, err := s.idempotencyRepo.Create(ctx, tx, &domain.IdempotencyRecord{
 		IdempotencyKey: req.IdempotencyKey,
 		RequestHash:    requestHash,
@@ -250,12 +250,9 @@ func (s *TransferService) handleDuplicateRequest(ctx context.Context, key, reque
 		return &TransferResult{Transfer: transfer, IsDuplicate: true}, nil
 
 	case domain.IdempotencyStatusInProgress:
-		// The IN_PROGRESS state is only visible during the narrow window where
-		// another transaction has committed the INSERT but hasn't yet committed
-		// the full transfer. In practice, since the INSERT and the COMPLETED
-		// update happen within the same transaction, this path is only reachable
-		// if the other transaction is still in-flight (which means our INSERT
-		// would have blocked, not conflicted). This is defensive code.
+		// With the advisory lock pre-check, concurrent in-flight requests are rejected early 
+		// before reaching this point. This fallback path remains defensively in case the advisory 
+		// lock check is bypassed or in rare key hash collision scenarios.
 		return nil, domain.ErrIdempotencyKeyInProgress
 
 	case domain.IdempotencyStatusFailed:
