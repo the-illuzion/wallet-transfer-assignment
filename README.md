@@ -109,34 +109,36 @@ erDiagram
 
 ## Idempotency Strategy
 
-Instead of a simple UNIQUE constraint on the transfers table, we use a **Dedicated Idempotency Table Barrier** pattern to support safe client retries and mismatch detection:
+Instead of a simple UNIQUE constraint on the transfers table, we use a **Dedicated Idempotency Table Barrier with Fast-Fail Advisory Locks** pattern to support safe client retries, mismatch detection, and instant rejection of concurrent duplicates:
 
 1. **Hashing**: Upon receiving a request, the service computes a SHA-256 `request_hash` of the payload parameters (`fromWalletId`, `toWalletId`, and `amount`).
-2. **Claiming Key**: The service attempts to insert an idempotency record with status `IN_PROGRESS` inside a database transaction:
+2. **Fast-Fail Advisory Lock**: A transaction-level PostgreSQL advisory lock (`pg_try_advisory_xact_lock`) is acquired on the FNV-1a 64-bit hash of the idempotency key. If the lock cannot be acquired immediately (indicating another concurrent request is currently processing this key), the transaction fails fast, returning `409 Conflict` (StatusConflict) without blocking.
+3. **Claiming Key**: If the lock is acquired, the service attempts to insert an idempotency record with status `IN_PROGRESS` inside the database transaction:
    ```sql
    INSERT INTO idempotency_records (idempotency_key, request_hash, status)
    VALUES ($1, $2, 'IN_PROGRESS') ON CONFLICT (idempotency_key) DO NOTHING;
    ```
-3. **Conflict Resolution**:
+4. **Conflict Resolution**:
    - If the insert **succeeds** (1 row affected), the transaction proceeds to process the transfer.
-   - If the insert **fails** (0 rows affected), it means the key was already claimed:
+   - If the insert **fails** (0 rows affected), it means the key was already claimed and committed by a completed request:
      - The current transaction is immediately rolled back.
      - Outside the transaction, the existing record is fetched.
      - **Mismatch check**: If the stored `request_hash` does not match the current request's hash, return `422 Unprocessable Entity` (preventing key reuse with a different payload).
-     - **In-flight check**: If status is `IN_PROGRESS`, return `409 Conflict` (notifying the caller that a request is already processing).
+     - **In-flight check**: If status is `IN_PROGRESS` (which is rare since the advisory lock is the primary guard, but handles other edge cases), return `409 Conflict`.
      - **Replay check**: If status is `COMPLETED`, return the cached transfer result with `200 OK` without performing any side-effects.
      - **Failure check**: If status is `FAILED`, return the cached error.
-4. **Outcome Mapping**:
+5. **Outcome Mapping**:
    - If the transfer is successfully committed, the idempotency record status is atomically updated to `COMPLETED` along with the created `transfer_id`.
-   - If the transaction is aborted or rolls back due to a network/system failure, the claimed `IN_PROGRESS` record is automatically rolled back, allowing the client to safely retry.
+   - If the transaction is aborted or rolls back due to a network/system failure, the claimed `IN_PROGRESS` record is rolled back, and the transaction advisory lock is automatically released, allowing the client to safely retry.
 
 ---
 
 ## Concurrency Control
 
-We employ **Deterministic Pessimistic Concurrency Locking** to handle concurrent transfer requests (e.g. transfers involving overlapping source/destination wallets) without data corruption or deadlocks:
+We employ **Deterministic Pessimistic Concurrency Locking & Advisory Locking** to handle concurrent transfer requests (e.g. transfers involving overlapping source/destination wallets) without data corruption, deadlocks, or connection pool exhaustion:
 
-1. **Ordering Lock Acquisition**: During a transfer transaction, we lock the rows for both wallets using `SELECT ... FOR UPDATE`. To prevent deadlocks, the lock acquisition is sorted alphabetically/lexicographically by the wallet IDs:
+1. **Fast-Fail Idempotency Locking**: To prevent concurrent duplicate requests from blocking on the database unique index or on wallet row locks, we acquire a transaction-level advisory lock (`pg_try_advisory_xact_lock`) on the idempotency key first.
+2. **Ordering Lock Acquisition**: During a transfer transaction, we lock the rows for both wallets using `SELECT ... FOR UPDATE`. To prevent deadlocks, the lock acquisition is sorted alphabetically/lexicographically by the wallet IDs:
    ```go
    firstID, secondID := fromID, toID
    if firstID > secondID {
@@ -147,7 +149,7 @@ We employ **Deterministic Pessimistic Concurrency Locking** to handle concurrent
    wallet2 := db.QueryRow("SELECT ... FROM wallets WHERE id = $1 FOR UPDATE", secondID)
    ```
    *Example:* If transfer 1 (A -> B) and transfer 2 (B -> A) execute concurrently, both will attempt to lock A first and then B. One will block waiting for the lock on A, avoiding a deadlock.
-2. **Fail-Safe Integrity**: If a concurrent transaction tries to deduct more money than available before our check completes, the database's `CHECK (balance >= 0)` constraint will immediately reject the UPDATE, rolling back the transaction.
+3. **Fail-Safe Integrity**: If a concurrent transaction tries to deduct more money than available before our check completes, the database's `CHECK (balance >= 0)` constraint will immediately reject the UPDATE, rolling back the transaction.
 
 ---
 

@@ -89,6 +89,17 @@ func (s *TransferService) CreateTransfer(ctx context.Context, req domain.CreateT
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck // rollback on defer is a safety net
 
+	// Try to acquire transaction-level advisory lock on the idempotency key to prevent concurrent blocking.
+	// If the lock is held by another transaction, we fail fast with ErrIdempotencyKeyInProgress (409 Conflict).
+	acquired, err := s.idempotencyRepo.TryAdvisoryXactLock(ctx, tx, req.IdempotencyKey)
+	if err != nil {
+		return nil, fmt.Errorf("check idempotency advisory lock: %w", err)
+	}
+	if !acquired {
+		s.logger.Info("concurrent idempotency key lock request rejected", "key", req.IdempotencyKey)
+		return nil, domain.ErrIdempotencyKeyInProgress
+	}
+
 	// 4. Claim the idempotency key (INSERT ... ON CONFLICT DO NOTHING)
 	//
 	// If another transaction holds this key (uncommitted INSERT), this will block

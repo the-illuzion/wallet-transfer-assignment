@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"hash/fnv"
 
 	"github.com/jackc/pgx/v5"
 
@@ -89,4 +90,19 @@ func (r *IdempotencyRepository) MarkFailed(ctx context.Context, db DBTX, key str
 		return domain.ErrIdempotencyKeyNotFound
 	}
 	return nil
+}
+
+// TryAdvisoryXactLock attempts to acquire a transaction-level advisory lock on the idempotency key.
+// It returns true if the lock was successfully acquired, or false if it is held by another transaction.
+func (r *IdempotencyRepository) TryAdvisoryXactLock(ctx context.Context, db DBTX, key string) (bool, error) {
+	h := fnv.New64a()
+	_, _ = h.Write([]byte(key))
+	lockID := int64(h.Sum64())
+
+	var acquired bool
+	err := db.QueryRow(ctx, "SELECT pg_try_advisory_xact_lock($1)", lockID).Scan(&acquired)
+	if err != nil {
+		return false, err
+	}
+	return acquired, nil
 }

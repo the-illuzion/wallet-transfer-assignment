@@ -35,4 +35,5 @@ type IdempotencyRepo interface {
 	GetByKey(ctx context.Context, db repository.DBTX, key string) (*domain.IdempotencyRecord, error)
 	MarkCompleted(ctx context.Context, db repository.DBTX, key string, transferID string) error
 	MarkFailed(ctx context.Context, db repository.DBTX, key string, transferID *string) error
+	TryAdvisoryXactLock(ctx context.Context, db repository.DBTX, key string) (bool, error)
 }

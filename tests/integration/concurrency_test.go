@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
 	"net/http"
 	"sync"
 	"testing"
@@ -256,4 +257,71 @@ func TestConcurrentIdempotency_SameKeyFromMultipleGoroutines(t *testing.T) {
 		"SELECT COUNT(*) FROM transfers WHERE idempotency_key = 'same-key'",
 	).Scan(&transferCount)
 	assertEqual(t, 1, transferCount, "transfer record count")
+}
+
+// TestConcurrentIdempotency_FastFail409 verifies that a concurrent request
+// using the same idempotency key fails fast with 409 Conflict instead of blocking.
+// We simulate this by holding a transaction-level advisory lock on the key hash
+// in a separate test database connection, then making the HTTP request.
+func TestConcurrentIdempotency_FastFail409(t *testing.T) {
+	cleanupDB(t)
+	createTestWallet(t, "wallet_a", 1000)
+	createTestWallet(t, "wallet_b", 500)
+
+	key := "fast-fail-key-123"
+
+	// Compute FNV-1a 64-bit hash of the key (matching repository/idempotency_repo.go implementation)
+	h := fnv.New64a()
+	_, _ = h.Write([]byte(key))
+	lockID := int64(h.Sum64())
+
+	// Start a transaction in the test's own DB session to acquire the lock
+	ctx := context.Background()
+	tx, err := testDB.Pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("failed to begin test transaction: %v", err)
+	}
+	defer tx.Rollback(ctx)
+
+	// Acquire the transaction-level advisory lock on behalf of the test
+	var acquired bool
+	err = tx.QueryRow(ctx, "SELECT pg_try_advisory_xact_lock($1)", lockID).Scan(&acquired)
+	if err != nil {
+		t.Fatalf("failed to call pg_try_advisory_xact_lock in test: %v", err)
+	}
+	if !acquired {
+		t.Fatal("expected test to acquire the advisory lock successfully")
+	}
+
+	// While we hold the lock, send an HTTP POST request to the server with the same key.
+	// The server should fail to acquire the lock and return 409 Conflict immediately.
+	body := fmt.Sprintf(
+		`{"idempotencyKey":"%s","fromWalletId":"wallet_a","toWalletId":"wallet_b","amount":100}`,
+		key,
+	)
+	resp := doHTTPPost(t, "/transfers", body)
+	defer resp.Body.Close()
+
+	assertStatusCode(t, http.StatusConflict, resp.StatusCode, "HTTP status for concurrent lock failure")
+
+	var result apiResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	assertEqual(t, false, result.Success, "success status")
+	if result.Error == nil {
+		t.Fatal("expected error object, got nil")
+	}
+	assertEqual(t, "IDEMPOTENCY_KEY_IN_PROGRESS", result.Error.Code, "error code")
+
+	// Release the lock by rolling back/committing the test transaction
+	if err := tx.Rollback(ctx); err != nil {
+		t.Fatalf("failed to rollback test transaction: %v", err)
+	}
+
+	// Now that the lock is released, try the transfer again. It should succeed (201 Created).
+	resp2 := doHTTPPost(t, "/transfers", body)
+	defer resp2.Body.Close()
+
+	assertStatusCode(t, http.StatusCreated, resp2.StatusCode, "HTTP status after lock release")
 }
