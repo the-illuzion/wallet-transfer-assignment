@@ -52,9 +52,14 @@ func NewTransferService(
 
 // CreateTransfer executes a wallet-to-wallet transfer with idempotency guarantees.
 //
-// The entire operation is atomic: either everything commits (balances updated,
-// ledger entries created, transfer PROCESSED, idempotency COMPLETED) or nothing
-// changes (transaction rolled back, idempotency key freed for retry).
+// The operation handles atomic outcomes:
+//   - Successful transfers commit: balances updated, ledger entries created,
+//     transfer PROCESSED, and idempotency status set to COMPLETED.
+//   - Business failures (e.g., wallet-not-found or insufficient funds) commit:
+//     transfer status set to FAILED (if applicable) and idempotency status set to FAILED.
+//     Subsequent retries with the same key will return the cached failure.
+//   - System errors (e.g., database connection loss) roll back the transaction,
+//     releasing/freeing the idempotency key for retry.
 //
 // Concurrency safety is achieved via SELECT FOR UPDATE on wallet rows, with wallets
 // locked in deterministic ID order to prevent deadlocks.
@@ -62,8 +67,8 @@ func NewTransferService(
 // Idempotency flow:
 //  1. INSERT idempotency record ON CONFLICT DO NOTHING (within the transaction)
 //  2. If conflict → the key was already claimed → handle as duplicate (outside tx)
-//  3. If inserted → proceed with transfer → mark idempotency COMPLETED on commit
-//  4. If transaction rolls back → idempotency record also rolls back → key freed for retry
+//  3. If inserted → proceed with transfer → mark idempotency COMPLETED or FAILED and commit
+//  4. If system error causes rollback → idempotency record also rolls back → key freed for retry
 func (s *TransferService) CreateTransfer(ctx context.Context, req domain.CreateTransferRequest) (*TransferResult, error) {
 	// 1. Validate request format (no database access needed)
 	if err := req.Validate(); err != nil {

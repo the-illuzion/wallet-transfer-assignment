@@ -54,7 +54,7 @@ The service adheres to **Clean Architecture** principles, enforcing a strict sep
 
 ## Database Schema Design
 
-The schema (defined in [migrations/001_init.sql](file:///Users/prateekgautam/Documents/wallet-transfer-assignment/migrations/001_init.sql)) is normalized and optimized using database-level constraints and indices:
+The schema (defined in [migrations/001_init.sql](./migrations/001_init.sql)) is normalized and optimized using database-level constraints and indices:
 
 ```mermaid
 erDiagram
