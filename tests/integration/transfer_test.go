@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -319,6 +320,29 @@ func TestGetTransfer_InvalidUUID(t *testing.T) {
 	defer resp.Body.Close()
 
 	assertStatusCode(t, http.StatusBadRequest, resp.StatusCode, "HTTP status")
+}
+
+func TestGetTransfer_UppercaseUUID(t *testing.T) {
+	cleanupDB(t)
+	createTestWallet(t, "wallet_a", 1000)
+	createTestWallet(t, "wallet_b", 500)
+
+	created := doTransfer(t, "tx-get-upper", "wallet_a", "wallet_b", 100, http.StatusCreated)
+
+	// Convert created ID to uppercase
+	upperID := strings.ToUpper(created.ID)
+
+	resp := doHTTPGet(t, "/transfers/"+upperID)
+	defer resp.Body.Close()
+
+	assertStatusCode(t, http.StatusOK, resp.StatusCode, "HTTP status")
+
+	var result apiResponse
+	json.NewDecoder(resp.Body).Decode(&result)
+	var retrieved transferData
+	json.Unmarshal(result.Data, &retrieved)
+
+	assertEqual(t, created.ID, strings.ToLower(retrieved.ID), "transfer ID")
 }
 
 // ── Wallet Tests ──────────────────────────────────────────────────────────────

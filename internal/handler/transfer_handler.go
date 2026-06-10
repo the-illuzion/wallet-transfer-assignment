@@ -12,7 +12,7 @@ import (
 	"github.com/prateekgautam/wallet-transfer-assignment/internal/service"
 )
 
-var uuidRegex = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+var uuidRegex = regexp.MustCompile(`^(?i)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 
 // TransferHandler handles HTTP requests for transfer operations.
 // It is a thin layer responsible only for parsing requests, invoking the service,

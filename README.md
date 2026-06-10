@@ -286,6 +286,14 @@ To stop and remove containers and database volumes:
 make docker-down
 ```
 
+### Database Seeding
+To pre-populate non-production databases with test wallets (e.g., `wallet_1`, `wallet_2`), you can optionally run seed scripts:
+- **Strictly Non-Production Only**: Seeding will **never** run in production environments (where `APP_ENV=production`). Any initial data required in production must be provisioned via schema migrations.
+- **Opt-in Configuration**: In non-production environments, seeding is disabled by default and is controlled via the `RUN_SEEDS` environment variable. To enable it, set:
+  ```bash
+  RUN_SEEDS=true
+  ```
+
 ---
 
 ## Testing Suite

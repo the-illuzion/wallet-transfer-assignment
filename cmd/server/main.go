@@ -36,13 +36,28 @@ func main() {
 	defer db.Close()
 	logger.Info("database connected")
 
-	// ── Migrations ────────────────────────────────────────────────────────
+	// ── Migrations & Seeds ────────────────────────────────────────────────
 	logger.Info("running migrations...")
 	if err := db.RunMigrations(ctx, "migrations"); err != nil {
 		logger.Error("failed to run migrations", "error", err)
 		os.Exit(1)
 	}
 	logger.Info("migrations completed")
+
+	appEnv := getEnv("APP_ENV", "development")
+	runSeeds := getEnv("RUN_SEEDS", "false")
+	if appEnv != "production" && runSeeds == "true" {
+		if _, err := os.Stat("seeds"); err == nil {
+			logger.Info("running database seeds...")
+			if err := db.RunMigrations(ctx, "seeds"); err != nil {
+				logger.Error("failed to run database seeds", "error", err)
+				os.Exit(1)
+			}
+			logger.Info("database seeds completed")
+		} else {
+			logger.Info("seeds directory not found, skipping seed execution")
+		}
+	}
 
 	// ── Dependency Wiring ─────────────────────────────────────────────────
 	walletRepo := repository.NewWalletRepository()

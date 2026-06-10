@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -52,9 +51,7 @@ func (db *DB) Close() {
 }
 
 // RunMigrations reads and executes all SQL migration files from the given
-// directory in sorted order (e.g., 001_init.sql, 002_seed.sql).
-// Seed files (containing "seed" in their name) are skipped in production environments
-// (when APP_ENV is "production" and RUN_SEEDS is not "true") or if RUN_SEEDS is explicitly "false".
+// directory in sorted order (e.g., 001_init.sql).
 func (db *DB) RunMigrations(ctx context.Context, migrationsDir string) error {
 	entries, err := os.ReadDir(migrationsDir)
 	if err != nil {
@@ -64,15 +61,6 @@ func (db *DB) RunMigrations(ctx context.Context, migrationsDir string) error {
 	for _, entry := range entries {
 		if entry.IsDir() || filepath.Ext(entry.Name()) != ".sql" {
 			continue
-		}
-
-		// Handle seed files skip logic
-		if strings.Contains(entry.Name(), "seed") {
-			appEnv := os.Getenv("APP_ENV")
-			runSeeds := os.Getenv("RUN_SEEDS")
-			if runSeeds == "false" || (appEnv == "production" && runSeeds != "true") {
-				continue
-			}
 		}
 
 		migrationFile := filepath.Join(migrationsDir, entry.Name())
